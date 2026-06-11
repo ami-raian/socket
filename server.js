@@ -41,6 +41,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/conversations', require('./routes/conversationRoutes'));
 app.use('/api/messages',      require('./routes/messageRoutes'));
 app.use('/api/users',         require('./routes/userRoutes'));
+app.use('/api/businesses',    require('./routes/businessRoutes'));
 
 // health check
 app.get('/health', (req, res) => res.json({ status: 'ok' }));

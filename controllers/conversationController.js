@@ -1,11 +1,42 @@
 const conversationService = require('../services/conversationService');
 const messageService      = require('../services/messageService');
+const businessService     = require('../services/businessService');
+const enrolledUserService = require('../services/enrolledUserService');
 
 const getAll = async (req, res, next) => {
   try {
     const { page, length, filters } = req.query;
     const result = await conversationService.getAll({ page, length, filters });
     res.json({ success: true, message: 'Conversations fetched successfully', ...result });
+  } catch (err) { next(err); }
+};
+
+// POST /api/conversations  { businessId, userId, conversationType? }
+// Creates (or reuses) a conversation between a business and an enrolled user.
+const createConversation = async (req, res, next) => {
+  try {
+    const { businessId, userId, conversationType } = req.body;
+
+    const [business, user] = await Promise.all([
+      businessService.getById(businessId),
+      enrolledUserService.getById(userId),
+    ]);
+
+    if (!business) return res.status(404).json({ success: false, message: 'Business not found' });
+    if (!user)     return res.status(404).json({ success: false, message: 'User not found' });
+
+    const { conversation, isNew } = await conversationService.createFromParticipants({
+      business, user, conversationType,
+    });
+
+    // broadcast new conversation to all connected agents
+    if (isNew) req.app.get('io')?.emit('conversation:new', conversation);
+
+    res.status(isNew ? 201 : 200).json({
+      success: true,
+      message: isNew ? 'Conversation created successfully' : 'Conversation already exists',
+      data:    conversation,
+    });
   } catch (err) { next(err); }
 };
 
@@ -116,4 +147,4 @@ const linkTradeAccount = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { getAll, markEvent, closeConversation, transferConversation, linkTradeAccount };
+module.exports = { getAll, createConversation, markEvent, closeConversation, transferConversation, linkTradeAccount };

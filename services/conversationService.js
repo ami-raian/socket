@@ -1,3 +1,4 @@
+const mongoose     = require('mongoose');
 const Conversation = require('../models/Conversation');
 
 // parse ?filters= JSON → mongo query
@@ -6,12 +7,19 @@ const buildFilter = (filtersParam) => {
   let parsed;
   try { parsed = JSON.parse(filtersParam); } catch { return {}; }
 
+  const castValue = (field, value) => {
+    if (field === '_id' && mongoose.isValidObjectId(value)) {
+      return new mongoose.Types.ObjectId(value);
+    }
+    return value;
+  };
+
   const toCondition = (key, value) => {
     const [field, op] = key.split('__');
     if (op === 'like') return { [field]: { $regex: value, $options: 'i' } };
     if (op === 'gte')  return { [field]: { $gte: value } };
     if (op === 'lte')  return { [field]: { $lte: value } };
-    return { [field]: value };
+    return { [field]: castValue(field, value) };
   };
 
   const conditions = [];
@@ -73,6 +81,50 @@ const create = async (payload) => {
   return toListItem(doc);
 };
 
+// Find existing OR create a new conversation between a business and an enrolled user.
+const createFromParticipants = async ({ business, user, conversationType = 'OFFICIAL' }) => {
+  // try to reuse an existing conversation with the same user + business
+  const existing = await Conversation.findOne({
+    businessId: String(business._id),
+    'participants.uId': user.uId,
+  });
+  if (existing) return { conversation: toListItem(existing), isNew: false };
+
+  const doc = await Conversation.create({
+    conversationType,
+    businessId:         String(business._id),
+    distributionStatus: 'UNASSIGNED',
+    status:             'OPEN',
+    whatsapp:           true,
+    lastMessage:        '',
+    lastMessageTime:    new Date(),
+    participants: [
+      {
+        _id:             String(business._id),
+        bId:             business.bId,
+        businessInitial: business.businessInitial,
+        name:            business.name,
+        phone:           business.phone,
+        profilePhoto:    business.profilePhoto,
+        isBusiness:      true,
+      },
+      {
+        _id:          String(user._id),
+        uId:          user.uId,
+        name:         user.name,
+        email:        user.email,
+        phone:        user.phone,
+        profileImage: user.profileImage,
+        referral:     user.referral,
+        currency:     user.currency,
+        isBusiness:   false,
+      },
+    ],
+  });
+
+  return { conversation: toListItem(doc), isNew: true };
+};
+
 const markSeen = async (conversationId, agentInfo) => {
   const seenAt = new Date();
   await Conversation.findByIdAndUpdate(conversationId, {
@@ -122,6 +174,6 @@ const incrementUnSeen = async (conversationId, lastMessage) =>
   });
 
 module.exports = {
-  getAll, getById, create, markSeen, markDelivered,
+  getAll, getById, create, createFromParticipants, markSeen, markDelivered,
   close, transfer, linkTradeAccount, incrementUnSeen, toListItem,
 };

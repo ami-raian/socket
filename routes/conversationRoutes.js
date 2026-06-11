@@ -4,6 +4,9 @@ const conversationController = require('../controllers/conversationController');
 // GET  /api/conversations?page=1&length=10&filters={}
 router.get('/', conversationController.getAll);
 
+// POST /api/conversations  { businessId, userId, conversationType? }
+router.post('/', conversationController.createConversation);
+
 // PATCH /api/conversations/:conversationId/event  { event: "seen"|"delivered", agentInfo }
 router.patch('/:conversationId/event', conversationController.markEvent);
 
