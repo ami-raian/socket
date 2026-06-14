@@ -1,3 +1,4 @@
+const mongoose     = require('mongoose');
 const EnrolledUser = require('../models/EnrolledUser');
 
 const buildFilter = (filtersParam, businessId) => {
@@ -61,6 +62,12 @@ const getAll = async ({ page = 1, length = 10, filters, businessId } = {}) => {
   };
 };
 
-const getById = (id) => EnrolledUser.findById(id);
+// Resolve by uId (e.g. "U2600595") or Mongo _id — never crash on a non-ObjectId.
+const getById = (id) => {
+  if (!id) return null;
+  const or = [{ uId: id }];
+  if (mongoose.isValidObjectId(id)) or.push({ _id: id });
+  return EnrolledUser.findOne({ $or: or });
+};
 
 module.exports = { getAll, getById, toItem };

@@ -5,25 +5,60 @@ const enrolledUserService = require('../services/enrolledUserService');
 
 const getAll = async (req, res, next) => {
   try {
-    const { page, length, filters } = req.query;
-    const result = await conversationService.getAll({ page, length, filters });
+    const { page, length, filters, businessId } = req.query;
+    const result = await conversationService.getAll({ page, length, filters, businessId });
     res.json({ success: true, message: 'Conversations fetched successfully', ...result });
   } catch (err) { next(err); }
 };
 
-// POST /api/conversations  { businessId, userId, conversationType? }
-// Creates (or reuses) a conversation between a business and an enrolled user.
+// POST /api/conversations
+//   { businessId, userId, conversationType?, business?, user? }
+// Creates (or reuses) a conversation between a business and a user.
+// `business` / `user` carry the details the frontend already has, so a user
+// searched from the platform (user-svc) can be used even if it isn't a locally
+// seeded EnrolledUser yet.
 const createConversation = async (req, res, next) => {
   try {
-    const { businessId, userId, conversationType } = req.body;
+    const {
+      businessId,
+      userId,
+      conversationType,
+      business: businessInfo,
+      user: userInfo,
+    } = req.body;
 
-    const [business, user] = await Promise.all([
-      businessService.getById(businessId),
-      enrolledUserService.getById(userId),
-    ]);
+    if (!businessId) return res.status(400).json({ success: false, message: 'businessId is required' });
+    if (!userId)     return res.status(400).json({ success: false, message: 'userId is required' });
 
+    // Resolve business: prefer a local DB record, fall back to the info sent.
+    let business = await businessService.getById(businessId);
+    if (!business && businessInfo) {
+      business = {
+        _id:             businessId,
+        bId:             businessInfo.bId,
+        businessInitial: businessInfo.businessInitial,
+        name:            businessInfo.name,
+        phone:           businessInfo.phone,
+        profilePhoto:    businessInfo.profilePhoto ?? businessInfo.logo,
+      };
+    }
     if (!business) return res.status(404).json({ success: false, message: 'Business not found' });
-    if (!user)     return res.status(404).json({ success: false, message: 'User not found' });
+
+    // Resolve user: prefer a local EnrolledUser, fall back to the info sent.
+    let user = await enrolledUserService.getById(userId);
+    if (!user && userInfo) {
+      user = {
+        _id:          userInfo._id || userId,
+        uId:          userInfo.uId || userId,
+        name:         userInfo.name,
+        email:        userInfo.email,
+        phone:        userInfo.phone,
+        profileImage: userInfo.profileImage,
+        referral:     userInfo.referral,
+        currency:     userInfo.currency,
+      };
+    }
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
     const { conversation, isNew } = await conversationService.createFromParticipants({
       business, user, conversationType,

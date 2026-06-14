@@ -36,6 +36,7 @@ const toListItem = (doc) => {
   const d = doc.toObject ? doc.toObject() : doc;
   return {
     _id:                String(d._id),
+    businessId:         d.businessId ? String(d.businessId) : null,
     conversationType:   d.conversationType   ?? 'OFFICIAL',
     tradeAccountNumber: d.tradeAccountNumber ?? '',
     distributionStatus: d.distributionStatus ?? 'UNASSIGNED',
@@ -53,8 +54,10 @@ const toListItem = (doc) => {
   };
 };
 
-const getAll = async ({ page = 1, length = 10, filters } = {}) => {
+const getAll = async ({ page = 1, length = 10, filters, businessId } = {}) => {
   const filter     = buildFilter(filters);
+  // scope the inbox to the selected business when one is provided
+  if (businessId) filter.businessId = String(businessId);
   const skip       = (page - 1) * length;
   const [docs, totalItems] = await Promise.all([
     Conversation.find(filter).sort({ lastMessageTime: -1 }).skip(skip).limit(Number(length)),
